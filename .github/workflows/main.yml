@@ -1,0 +1,48 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK parts
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0" \
+            "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Download wake-word models (debug build only)
+        continue-on-error: true
+        run: |
+          d=app/src/debug/assets/wake
+          base=https://github.com/dscripka/openWakeWord/releases/download/v0.5.1
+          for f in melspectrogram.onnx embedding_model.onnx hey_jarvis_v0.1.onnx; do
+            curl -fsSL --retry 3 -o "$d/$f" "$base/$f"
+          done
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
